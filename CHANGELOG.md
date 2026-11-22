@@ -2,6 +2,46 @@
 
 格式参考上游：每条版本以一行连字符分隔线包裹。
 
+## 0.0.3 — 锚点式折跃
+
+折跃逻辑重写为「出发点」模型：
+
+- 起飞时把当前位置记为**出发点（anchor）**；每次折跃成功后，落点成为新的出发点
+- 触发条件（同时成立）：离出发点 > `minFoldDistance` 且离目标 > `maxArrivalDistance`
+- 落点：在「当前位置 → 目标点」连线上，取距目标正好 `maxArrivalDistance` 的点
+- 按 `checkIntervalTicks` 的间隔探测，可与距离计算共用同一间隔
+- 折跃后「离目标 = `maxArrivalDistance`」，条件自然不再成立 → 循环收敛，无需次数上限与冷却
+
+> 「离出发点的距离」指**当前点到出发点的直线距离**，不是沿飞行轨迹的路径积分。
+
+默认值：`minFoldDistance = 100`、`maxArrivalDistance = 64`、`checkIntervalTicks = 5`。
+折跃需要初始距离 > `minFoldDistance + maxArrivalDistance` = 164 格，低于此值不折跃。
+远期投递总耗时 ≈ 27 秒，且与距离基本无关（5000 格与 200 格相同）。
+
+配置项收敛到 6 个，删除 0.0.2 的六项：
+
+| 删除 | 原因 |
+|---|---|
+| `minDistance` | 被 `minFoldDistance`（相对出发点）取代 |
+| `minTravelTicks` | 改由距离驱动，不再按时间 |
+| `arrivalHeight` | 落点改为连线上的几何点，不再抬到目标上方 |
+| `arrivalSpread` | 同上，取消随机水平偏移 |
+| `maxFoldsPerTrip` | 条件自收敛，不再需要次数上限 |
+| `foldCooldownTicks` | 由 `checkIntervalTicks` 承担节流 |
+
+新增：
+
+- `CHMServer.isUsable()`：`maxArrivalDistance >= minFoldDistance` 时自动禁用折跃，避免原地自激
+- ETA 模型同步重写为 `dT` / `dA` 双变量式，折跃前后连续，倒计时不再跳变
+- 落点不再做地形检测（逻辑蜂无碰撞，卡方块只是一瞬视觉瑕疵）
+
+行为变化：远期投递（5000 格）由 0.0.2 的约 9 秒变为约 27 秒（首次折跃需先飞满 `minFoldDistance`）。
+
+> 修订：0.0.3 首发时 `minFoldDistance` 默认值为 512（远期投递 ≈ 96 秒），
+> 随后按需求改为 100，版本号不变。
+
+------------------------------------------------------
+
 ## 0.0.2 — 折跃感知的 ETA
 
 - 修正玩家侧 Toast 与旅行显示源的剩余时间：改为「实际预期飞行时间」，

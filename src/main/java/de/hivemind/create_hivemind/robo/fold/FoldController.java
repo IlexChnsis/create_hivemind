@@ -7,18 +7,25 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.phys.Vec3;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * 折跃判定与执行。
  *
  * <p>只在 {@code RoboBeeBehaviorController#handleNavigateToTarget} 的 TAIL 调用：
- * 此时运输蜂已经朝目标推进了一 tick，位置、速度都已是本 tick 的结果，
+ * 此时运输蜂已经朝目标推进了一 tick，位置已是本 tick 的结果，
  * 折跃后下一 tick 状态机自然继续跑 {@code NAVIGATE_TO_TARGET}，无需改状态机。</p>
+ *
+ * <p>判定条件（两者同时成立才折跃）：</p>
+ * <ol>
+ *   <li>当前位置 → 出发点 的距离 &gt; {@code minFoldDistance}</li>
+ *   <li>当前位置 → 目标点 的距离 &gt; {@code maxArrivalDistance}</li>
+ * </ol>
+ *
+ * <p>落点：连线（当前位置 → 目标点）上距目标正好 {@code maxArrivalDistance} 的点。
+ * 折跃后落点成为新的出发点，因此下一轮检测的基准随之前移，
+ * 一次航程可以连续折跃多次，直到离目标足够近为止。</p>
  */
 public final class FoldController {
-
-    private static final double MIN_ARRIVAL_GAP = 1.5;
 
     /**
      * @return 本 tick 是否发生了折跃
@@ -27,7 +34,7 @@ public final class FoldController {
         if (robo == null) {
             return false;
         }
-        if (!CHMServer.ENABLE.get()) {
+        if (!CHMServer.ENABLE.get() || !CHMServer.isUsable()) {
             return false;
         }
 
@@ -43,44 +50,41 @@ public final class FoldController {
 
         FoldState state = FoldStateStore.get(robo);
         long now = level.getGameTime();
+        Vec3 here = robo.getCurrentPos();
 
-        // 新的一段巡航：重置计数
-        if (state.isStale(now) || state.targetChanged(targetPos)) {
-            state.reset(now, targetPos);
+        // 新的一段巡航：把当前位置记为出发点
+        if (!state.hasAnchor() || state.isStale(now) || state.targetChanged(targetPos)) {
+            state.beginTrip(now, here, targetPos);
+            return false;
         }
-        state.navigationTicks++;
-        state.lastSeenTick = now;
-        state.lastTarget = targetPos;
+        state.observe(now, targetPos);
 
-        // 先在未加高度偏移的真实目标点上算距离，语义与配置说明一致
-        double distance = robo.getCurrentPos().distanceTo(targetPos);
-        if (distance < CHMServer.MIN_DISTANCE.get()) {
+        // 探测间隔：没到下一次检查时间就直接返回
+        int interval = CHMServer.CHECK_INTERVAL_TICKS.get();
+        if (now - state.lastCheckTick() < interval) {
             return false;
         }
-        if (state.navigationTicks < CHMServer.MIN_TRAVEL_TICKS.get()) {
-            return false;
-        }
-        if (state.folds >= CHMServer.MAX_FOLDS_PER_TRIP.get()) {
-            return false;
-        }
-        if (now - state.lastFoldTick < CHMServer.FOLD_COOLDOWN_TICKS.get()) {
+        state.markChecked(now);
+
+        Vec3 anchor = state.anchor();
+        if (anchor == null) {
             return false;
         }
 
-        int height = CHMServer.ARRIVAL_HEIGHT.get();
-        int spread = CHMServer.ARRIVAL_SPREAD.get();
-
-        Vec3 from = robo.getCurrentPos();
-        Vec3 landing = FoldLanding.pick(level, targetPos, height, spread);
-
-        // 落点离目标太近会让 isAtTarget(dist < speed) 立刻成立，跳过对齐动画
-        if (landing.distanceTo(targetPos.add(0, 2, 0)) < MIN_ARRIVAL_GAP) {
-            landing = landing.add(0, height, 0);
+        double fromStart = here.distanceTo(anchor);
+        if (fromStart <= CHMServer.MIN_FOLD_DISTANCE.get()) {
+            return false;
         }
 
-        apply(level, robo, from, landing);
+        double toTarget = here.distanceTo(targetPos);
+        double arrival = CHMServer.MAX_ARRIVAL_DISTANCE.get();
+        if (toTarget <= arrival) {
+            return false;
+        }
 
-        state.markFold(now, targetPos);
+        Vec3 landing = FoldLanding.pointTowardTarget(here, targetPos, arrival);
+        apply(level, robo, here, landing);
+        state.markFold(now, landing, targetPos);
         return true;
     }
 
@@ -102,27 +106,6 @@ public final class FoldController {
             level.playSound(null, landing.x, landing.y, landing.z,
                     SoundEvents.ENDERMAN_TELEPORT, SoundSource.NEUTRAL, 0.7f, 1.2f);
         }
-    }
-
-    /**
-     * 供调试使用：折跃一次并返回落点，不受各项阈值限制（仅受总开关约束）。
-     */
-    @Nullable
-    public static Vec3 forceFold(VirtualRobo robo, int height, int spread) {
-        if (robo == null || !CHMServer.ENABLE.get()) {
-            return null;
-        }
-        ServerLevel level = robo.getServerLevel();
-        Vec3 targetPos = robo.getTargetPosition();
-        if (level == null || targetPos == null) {
-            return null;
-        }
-        Vec3 from = robo.getCurrentPos();
-        Vec3 landing = FoldLanding.pick(level, targetPos, height, spread);
-        apply(level, robo, from, landing);
-        FoldState state = FoldStateStore.get(robo);
-        state.markFold(level.getGameTime(), targetPos);
-        return landing;
     }
 
     private FoldController() {

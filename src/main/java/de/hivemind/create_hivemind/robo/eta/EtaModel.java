@@ -14,29 +14,30 @@ import org.jetbrains.annotations.Nullable;
  * ETA 修正：让玩家看到的剩余时间是「实际预期飞行时间」，而不是「剩余直线距离 / 速度」。
  *
  * <p>上游 {@code CMPHelper.calcETA} 只做 {@code 距离 / beeSpeed}。折跃会让运输蜂瞬间走完一大段路，
- * 所以折跃发生之前，那个数字会严重高估（5000 格默认配置下接近 14 分钟）；折跃发生之后又突然归零。
- * 用户要的口径是：</p>
+ * 所以折跃发生之前，那个数字会严重高估（5000 格默认配置下接近 14 分钟）；折跃发生后又会突然归零。</p>
  *
- * <pre>剩余时间 = 总路程时间 − 折跃路段按正常速度折算的时间</pre>
+ * <p>0.0.3 的锚点式折跃让这件事变得很干净。设：</p>
+ * <ul>
+ *   <li>{@code dT} = 当前位置到目标的距离</li>
+ *   <li>{@code dA} = 当前位置到出发点（anchor）的距离</li>
+ * </ul>
  *
- * <p>等价于「这段路实际要飞多久」，也就是把即将发生的折跃提前计入。</p>
+ * <p>折跃在 {@code dA > minFoldDistance} 且 {@code dT > maxArrivalDistance} 时触发，
+ * 落点距目标正好 {@code maxArrivalDistance}。所以：</p>
  *
- * <p>预测规则与 {@code FoldController} 的判定保持一致：</p>
- * <ol>
- *   <li>距离不够 / 总开关关闭 / 次数用尽 → 退回上游公式，不做任何修饰；</li>
- *   <li>还需要补足 {@code minTravelTicks} 时，先把这段时间折算成飞行距离；</li>
- *   <li>补足之后如果剩余距离仍然 ≥ {@code minDistance}，那么下一 tick 必定折跃，
- *       折跃后只剩「落点 → 目标上方 2 格」这段；</li>
- *   <li>补足之后距离已经不够了，则不会折跃，按普通公式算。</li>
- * </ol>
+ * <pre>
+ *   还要先飞  = max(0, minFoldDistance - dA)
+ *   折跃点离目标 = dT - 还要先飞
+ *   若 折跃点离目标 &gt; maxArrivalDistance → 会折跃 → 剩余 = 还要先飞 + maxArrivalDistance
+ *   否则                              → 不折跃 → 剩余 = dT
+ * </pre>
  *
- * <p>落点距离用 {@code sqrt(spread² + (height-2)²)} 估算，即折跃后还要飞的那一段。
- * 与真实落点的差异来自随机水平偏移的方向和地形高度，属于可接受的估算误差；
- * 折跃真正发生后本类自动退回第 1 条，数值不会跳变。</p>
+ * <p>这个式子有个好处：折跃前后数值是连续的。折跃瞬间 {@code dA} 归零、{@code dT} 变成
+ * {@code maxArrivalDistance}，{@code 还要先飞} 变成 {@code minFoldDistance}，
+ * 而 {@code dT - 还要先飞} 变成负数 → 走「不折跃」分支 → 剩余仍是 {@code dT}。
+ * 因此玩家看到的倒计时平滑下降，不会跳变。</p>
  */
 public final class EtaModel {
-
-    private static final double TICKS_PER_SECOND = 20.0;
 
     /** 与上游一致：无法计算时返回 -1。 */
     private static int baseline(double distance, int speed) {
@@ -57,42 +58,33 @@ public final class EtaModel {
         if (target == null) {
             return -1;
         }
-        double distance = robo.getCurrentPos().distanceTo(target);
+
+        Vec3 here = robo.getCurrentPos();
         int speed = Math.max(1, CMPConfigs.server().beeSpeed.get());
+        double toTarget = here.distanceTo(target);
 
         // 专用客户端或配置尚未加载时不要访问 config，否则 get() 会抛 IllegalStateException
-        if (!CHMServer.SPEC.isLoaded()) {
-            return baseline(distance, speed);
-        }
-
-        if (!CHMServer.ENABLE.get() || distance < CHMServer.MIN_DISTANCE.get()) {
-            return baseline(distance, speed);
+        if (!CHMServer.SPEC.isLoaded() || !CHMServer.ENABLE.get() || !CHMServer.isUsable()) {
+            return baseline(toTarget, speed);
         }
 
         FoldState state = FoldStateStore.peek(robo);
-        int foldsDone = state == null ? 0 : state.folds();
-        if (foldsDone >= CHMServer.MAX_FOLDS_PER_TRIP.get()) {
-            return baseline(distance, speed);
+        // 本 tick 还没走过折跃判定（例如 Toast 在 handleNavigateToTarget 开头被调用）时，
+        // 把当前位置当成出发点，得到的正是「这一段会怎么飞」的预期。
+        Vec3 anchor = state != null && state.anchor() != null ? state.anchor() : here;
+
+        double minFoldDistance = CHMServer.MIN_FOLD_DISTANCE.get();
+        double arrival = CHMServer.MAX_ARRIVAL_DISTANCE.get();
+
+        double flyBeforeFold = Math.max(0.0, minFoldDistance - here.distanceTo(anchor));
+        double distanceAtFold = toTarget - flyBeforeFold;
+
+        double remaining = toTarget;
+        if (distanceAtFold > arrival) {
+            remaining = flyBeforeFold + arrival;
         }
 
-        int navigationTicks = state == null ? 0 : state.navigationTicks();
-        int waitTicks = Math.max(0, CHMServer.MIN_TRAVEL_TICKS.get() - navigationTicks);
-        double waitDistance = waitTicks / TICKS_PER_SECOND * speed;
-
-        // 补足最小飞行时间后已经离目标足够近 → 不会折跃
-        if (distance - waitDistance < CHMServer.MIN_DISTANCE.get()) {
-            return baseline(distance, speed);
-        }
-
-        // 会折跃：先飞 waitDistance，再飞折跃落点到目标的那一小段
-        return baseline(waitDistance + arrivalDistance(), speed);
-    }
-
-    /** 折跃落点 到「目标上方 2 格」的直线距离。 */
-    private static double arrivalDistance() {
-        double spread = CHMServer.ARRIVAL_SPREAD.get();
-        double height = Math.max(0, CHMServer.ARRIVAL_HEIGHT.get() - 2);
-        return Math.sqrt(spread * spread + height * height);
+        return baseline(remaining, speed);
     }
 
     /**

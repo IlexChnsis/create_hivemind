@@ -90,26 +90,91 @@ CMP 现状（已核实）：
 
 > M0 的验收记录见 `docs/SESSION-REFERENCE.md` 的「M0 验收」一节。
 
-### M1 同维度远距离折跃（1–2 天）★核心 — 已实现，待游戏内验收
+## M1 同维度远距离折跃（已实现，三个小版本迭代）
 
 > 实现状态：代码已完成并出包（`BUILD SUCCESSFUL`），**尚未做游戏内运行时验证**。
-> 实际实现与下文的差异：
-> - 注入点采用 `handleNavigateToTarget` 的 **TAIL**（不是 HEAD/TAIL 两者）
-> - 配置项 `particles` 之外多了一个 `sound`（默认 true）
-> - 折跃状态用 `WeakHashMap<VirtualRobo, FoldState>` 外部持有，不往 `VirtualRobo` 注入字段
-> - mixin 使用 `remap = false`，`mixins.json` 不带 `refmap`（原因见 SESSION-REFERENCE）
+> 演进：0.0.1 初版（时间驱动）→ 0.0.2 折跃感知 ETA → **0.0.3 锚点式（当前生效逻辑）**。
+> 下面 M1a 保留作历史记录，现行语义以 M1c 为准。
 >
 > 代码位置：
 > - `robo/fold/FoldController.java` — 判定与执行
-> - `robo/fold/FoldLanding.java` — 落点选择（含未加载区块保护）
-> - `robo/fold/FoldState.java` / `FoldStateStore.java` — 单蜂折跃状态
-> - `robo/eta/EtaModel.java` — 折跃感知的剩余时间（0.0.2 追加）
+> - `robo/fold/FoldLanding.java` — 连线落点（0.0.3 起为纯几何）
+> - `robo/fold/FoldState.java` / `FoldStateStore.java` — 单蜂折跃状态（含 anchor）
+> - `robo/eta/EtaModel.java` — 折跃感知的剩余时间
 > - `mixin/RoboBeeBehaviorMixin.java` — 注入 `handleNavigateToTarget` 的 TAIL
 > - `mixin/VirtualRoboEtaMixin.java` — 注入 `updateEta` 的 TAIL
 > - `mixin/PlayerTargetEtaMixin.java` — 注入 `updateEtaToast` 的 HEAD
 > - `config/CHMServer.java` / `index/CHMConfigs.java` — 配置
 
-### M1b 折跃感知的 ETA（0.0.2，已完成）
+### M1c 锚点式折跃（0.0.3，当前逻辑）★
+
+需求原文（用户）：
+
+> 从出发后，记录当前出发点并始终朝向目标追踪；检测到「当前位置距出发点 > 最小跃迁距离」
+> 且「距目标 > 最大到达距离」则跃迁；沿连线跳到距目标为最大到达距离的点；完成后出发点更新为该落点。
+
+实现：
+
+- `FoldState` 持有 `anchor`；`beginTrip()` 在起飞/换目标/超时后把当前位置记为 anchor
+- `FoldController.tryFold()` 按 `checkIntervalTicks` 节流（默认 5 tick）后才检查条件
+- 判定：`here.distanceTo(anchor) > minFoldDistance` 且 `here.distanceTo(target) > maxArrivalDistance`
+- 落点：`FoldLanding.pointTowardTarget(here, target, maxArrivalDistance)`，即 `target + (here-target).normalize() * arrival`
+- 折跃后 `state.markFold(now, landing, target)` → **anchor = 落点**，下一轮以新基准继续
+- 收敛性：折跃后 `车 → 目标 == maxArrivalDistance`，第二条条件不再成立 → 循环自然终止，无需次数上限
+- 自激保护：`maxArrivalDistance >= minFoldDistance` 时 `CHMServer.isUsable()` 返回 false，直接禁用折跃
+- 落点不做地形检测：逻辑蜂无碰撞、表现实体每 tick 被 `syncFromVirtual` 强同步，卡方块只是一瞬视觉瑕疵
+
+配置（`config/create_hivemind-server.toml`，6 项）：
+
+```toml
+[fold]
+  enable = true
+  minFoldDistance = 100      # 与出发点的直线距离超过这个值才折跃
+  maxArrivalDistance = 64    # 离目标小于这个距离就不折跃；折跃落点距目标正好这么多
+  checkIntervalTicks = 5     # 探测间隔，20 tick = 1 秒
+  particles = true
+  sound = true
+```
+
+> 「与出发点的距离」指**当前点到出发点的直线距离**（`here.distanceTo(anchor)`），
+> 不是沿飞行轨迹的路径积分。运输蜂基本沿直线朝目标飞，所以这个值从 0 单调增长。
+
+删除的旧配置及原因：
+
+| 删除项 | 原因 |
+|---|---|
+| `minDistance` | 改为相对出发点的 `minFoldDistance` |
+| `minTravelTicks` | 改由距离驱动，不按时间 |
+| `arrivalHeight` / `arrivalSpread` | 落点改为连线上的几何点，不再抬升/散布 |
+| `maxFoldsPerTrip` | 条件自收敛，不需要上限 |
+| `foldCooldownTicks` | 由 `checkIntervalTicks` 承担节流 |
+
+代价与调参（模拟数据，`beeSpeed = 6`，`maxArrivalDistance = 64`）：
+
+锚点模型的特性是**总耗时与距离基本无关**——远期目标会被一次折跃拉近到 64 格，
+所以 5000 格和 200 格花的时间一样。
+
+| 起点到目标 | 折跃次数 | 总耗时 | 不折跃 |
+|---|---|---|---|
+| 5000 | 1 | ≈ 27.4 s | 833 s |
+| 1000 | 1 | ≈ 27.4 s | 167 s |
+| 500 | 1 | ≈ 27.4 s | 83 s |
+| 200 | 1 | ≈ 27.4 s | 33 s |
+| 165 | 1 | ≈ 27.4 s | 28 s |
+| 150 | 0 | 25.1 s | 25 s |
+| 100 | 0 | 16.7 s | 17 s |
+
+折跃需要的初始距离约为 `minFoldDistance + maxArrivalDistance` = 164 格，低于此值不会折跃。
+`minFoldDistance` 越小越快：
+
+| `minFoldDistance` | 折跃触发距离 | 远期投递总耗时 |
+|---|---|---|
+| 64 | ≈ 128 格 | ≈ 21 s |
+| **100（默认）** | **≈ 164 格** | **≈ 27 s** |
+| 256 | ≈ 320 格 | ≈ 53 s |
+| 512 | ≈ 576 格 | ≈ 96 s |
+
+### M1b 折跃感知的 ETA（0.0.2，0.0.3 同步重写）
 
 问题：上游 `CMPHelper.calcETA` 只算 `剩余直线距离 / beeSpeed`。折跃前严重高估（5000 格 ≈ 834 秒），
 折跃后突然归零，玩家看到的「剩余时间」与实际体验不符。
@@ -121,36 +186,33 @@ CMP 现状（已核实）：
         = 这段路实际预期要飞多久
 ```
 
-实现要点：
+0.0.3 的实现（两变量式，已按锚点逻辑重写）：
 
-- `EtaModel.predictedSeconds()` 复用与 `FoldController` 一致的判定（开关 / `minDistance` /
-  `minTravelTicks` / `maxFoldsPerTrip`），预测下一次折跃并把落点距离计入
-- 折跃未发生时不改动上游数值；折跃后自动退回上游公式，保证单调下降、无跳变
+```
+还要先飞     = max(0, minFoldDistance − dA)        # dA = 到出发点距离
+折跃点离目标 = dT − 还要先飞                       # dT = 到目标距离
+若 折跃点离目标 > maxArrivalDistance → 剩余 = 还要先飞 + maxArrivalDistance
+否则                                → 剩余 = dT
+```
+
+连续性：折跃后 `dA` 归零、`dT` 变为 `maxArrivalDistance`，`dT − 还要先飞` 为负 → 走「不折跃」分支 → 剩余仍是 `dT`。
+因此倒计时单调下降、不跳变（已用模拟验证：折跃前 11 s，折跃后 11 s）。
+
+其他要点：
+
 - 两个注入点：`updateEta()` 的 TAIL 覆盖最终值；`updateEtaToast` 的 HEAD 保证 Toast 读到新值
   （Toast 在 `handleNavigateToTarget` 里「先 setETA 再立刻读」，早于 `updateEta()`）
 - `CHMServer.SPEC.isLoaded()` 守卫，专用客户端不访问 config
-- 落点距离按 `sqrt(arrivalSpread² + (arrivalHeight-2)²)` 估算，误差来自随机偏移方向与地形高度
+- 状态尚未建立时（首 tick 的 Toast），把当前位置当 anchor，`还要先飞 = minFoldDistance`，语义仍然正确
 
-验收（待游戏内确认）：5000 格投递时 Toast 显示 9 秒 → 7 秒 → 折跃后 6 秒；
-短距离（< 512 格）显示值与上游一致。
+验收（待游戏内确认）：5000 格投递时 Toast 从 ≈ 28 秒平滑降到 ≈ 11 秒，折跃瞬间不跳变；
+短距离（< 164 格，即 `minFoldDistance + maxArrivalDistance`）显示值与上游一致。
 
-### M1 同维度远距离折跃（1–2 天）★核心 — 已实现，待游戏内验收
+### M1a 初版逻辑（0.0.1，已被 0.0.3 取代，保留作记录）
 
-行为：起飞 → 飞 `minTravelTicks` → 距离 > `minDistance` 且未超次数 → 瞬移到目标附近 → 继续飞 → 正常降落。
-
-配置（`config/create_hivemind-server.toml`）：
-
-```toml
-[fold]
-  enable = true
-  minDistance = 512
-  minTravelTicks = 60
-  arrivalHeight = 32
-  arrivalSpread = 12
-  maxFoldsPerTrip = 2
-  foldCooldownTicks = 40
-  particles = true
-```
+行为：起飞 → 飞 `minTravelTicks` → 距离 > `minDistance` 且未超次数 → 瞬移到目标上方定高 + 随机散布 →
+继续飞 → 正常降落。配置为 `minDistance` / `minTravelTicks` / `arrivalHeight` / `arrivalSpread` /
+`maxFoldsPerTrip` / `foldCooldownTicks` / `particles`（0.0.3 已全部删除或替换）。
 
 注入点（侵入性从低到高）：
 

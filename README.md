@@ -13,36 +13,42 @@ Create: Mobile Packages（CMP）的附属模组，为运输蜂（Robo Bee）增�
 
 ## 功能
 
-运输蜂在**同一维度**内远距离投递时，先正常飞一小段，然后直接折跃到目标附近，再飞完最后一段并正常降落交付。
+运输蜂在**同一维度**内远距离投递时，朝目标飞出一段后沿连线折跃到目标附近，再飞完最后一段并正常降落交付。
 
-触发条件（全部满足）：
+### 折跃逻辑（0.0.3 起：锚点式）
 
-1. `[fold] enable = true`
-2. 当前与目标的直线距离 ≥ `minDistance`（默认 512 格）
-3. 已经历 ≥ `minTravelTicks` 个巡航 tick（默认 60，即 3 秒）
-4. 本次航程折跃次数 < `maxFoldsPerTrip`（默认 2）
-5. 距上次折跃 ≥ `foldCooldownTicks`（默认 40）
+起飞时把当前位置记为**出发点（anchor）**，之后按 `checkIntervalTicks` 的间隔探测。
+以下两条**同时成立**时折跃：
 
-落点：目标点上方 `arrivalHeight`（默认 32 格），再加半径 `arrivalSpread`（默认 12 格）的随机水平偏移，
-然后向下扫描最多 64 格，取第一个「本格与上方一格都是空气」的位置；区块未加载时直接使用高空落点。
+1. 当前位置 → **出发点** 的距离 > `minFoldDistance`
+2. 当前位置 → **目标点** 的距离 > `maxArrivalDistance`
 
-配置写在 `config/create_hivemind-server.toml`，服务器配置（改完重启生效）：
+折跃落点：在「当前位置 → 目标点」这条连线上，取距目标正好 `maxArrivalDistance` 的那个点。
+**落点随即成为新的出发点**，所以一次航程可以连续折跃多次，直到离目标足够近。
+
+因为折跃后「离目标 = `maxArrivalDistance`」，第 2 条不再成立，循环会自然收敛，不需要次数上限。
+若有人把 `maxArrivalDistance` 配成 ≥ `minFoldDistance`，折跃会原地自激，此时模组**自动禁用折跃**。
+
+配置写在 `config/create_hivemind-server.toml`（服务器配置，改完重启生效）：
 
 ```toml
 [fold]
   enable = true
-  minDistance = 512
-  minTravelTicks = 60
-  arrivalHeight = 32
-  arrivalSpread = 12
-  maxFoldsPerTrip = 2
-  foldCooldownTicks = 40
+  minFoldDistance = 100
+  maxArrivalDistance = 64
+  checkIntervalTicks = 5
   particles = true
   sound = true
 ```
 
+> 0.0.2 的 `minDistance` / `minTravelTicks` / `arrivalHeight` / `arrivalSpread` /
+> `maxFoldsPerTrip` / `foldCooldownTicks` 已全部删除。旧 toml 里残留的键会被 NeoForge 忽略，
+> 删掉文件重新生成即可。
+
 实现方式：`RoboBeeBehaviorMixin` 在 CMP 的 `RoboBeeBehaviorController#handleNavigateToTarget` 末尾注入，
 只调用 `VirtualRobo#setPos` 把逻辑蜂挪到落点，不改状态机、不加方块、不加物品、不改存档格式。
+
+**落点不做地形检测**：逻辑蜂没有碰撞，卡在山体里只是一瞬间的视觉瑕疵，之后会自己飞出来。
 
 ## 剩余时间（ETA）怎么算
 
@@ -52,25 +58,26 @@ Create: Mobile Packages（CMP）的附属模组，为运输蜂（Robo Bee）增�
 剩余时间 = 总路程时间 − 折跃路段按正常速度折算的时间
 ```
 
-因为折跃会让运输蜂瞬间走完一大段路，若直接按直线距离算，折跃前会严重高估、折跃后又突然归零。
-`robo/eta/EtaModel` 按与折跃判定完全一致的规则提前把折跃计入：
+锚点式折跃让这个式子很干净。设 `dT` = 到目标距离、`dA` = 到出发点距离：
 
-1. 总开关关闭、距离不足、次数用尽 → 完全等于上游公式，不做任何修饰；
-2. 还需补足 `minTravelTicks` → 先折算这段要飞的距离；
-3. 补足后距离仍 ≥ `minDistance` → 判定下一次巡航必定折跃，加上「落点 → 目标上方 2 格」这段；
-4. 补足后距离已经不够 → 不会折跃，按普通公式算。
+```
+还要先飞     = max(0, minFoldDistance − dA)
+折跃点离目标 = dT − 还要先飞
+若 折跃点离目标 > maxArrivalDistance → 剩余 = 还要先飞 + maxArrivalDistance
+否则                                → 剩余 = dT
+```
 
-折跃真正发生后自动退回第 1 条，所以数值单调下降、不会跳变。
-落点距离用 `sqrt(arrivalSpread² + (arrivalHeight-2)²)` 估算，误差来自随机偏移方向与地形高度。
+折跃前（`dA` 接近 `minFoldDistance`）剩下 `还要先飞 + 64`；折跃后 `dA` 归零、`dT` 变成 64，
+此时 `dT − 还要先飞` 为负 → 走「不折跃」分支 → 剩余仍是 `dT`。所以**倒计时连续、单调下降、不跳变**。
 
-示例（`beeSpeed = 6`，5000 格投递，默认配置）：
+示例（`beeSpeed = 6`，5000 格投递，默认配置 `minFoldDistance = 100`、`maxArrivalDistance = 64`）：
 
-| 阶段 | 显示的剩余时间 |
-|---|---|
-| 起飞瞬间（上游算法会显示） | 834 秒 |
-| 起飞瞬间（本模组显示） | 9 秒 |
-| 飞了 30 tick | 7 秒 |
-| 折跃发生 | 6 秒 |
+| 阶段 | 上游算法 | 本模组 |
+|---|---|---|
+| 起飞瞬间 | 834 秒 | 28 秒 |
+| 飞了 8 秒（`dA = 48`） | 786 秒 | 20 秒 |
+| 折跃前一刻（`dA = 95`） | 784 秒 | 12 秒 |
+| 折跃后（`dT = 64`） | 11 秒 | 11 秒 |
 
 注入点：`VirtualRoboEtaMixin` 覆盖 `updateEta()` 的最终值（影响所有读取 ETA 的地方），
 `PlayerTargetEtaMixin` 在 `updateEtaToast` 开头先覆写再让 Toast 读取

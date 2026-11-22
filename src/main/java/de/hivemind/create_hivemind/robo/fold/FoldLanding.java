@@ -1,54 +1,36 @@
 package de.hivemind.create_hivemind.robo.fold;
 
-import net.minecraft.core.BlockPos;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * 折跃落点选择。
+ * 折跃落点：纯几何，不做地形修正。
  *
- * <p>规则：目标点正上方 {@code height} 格，加一圈随机水平偏移（{@code spread}），
- * 然后从该位置向下找第一个「本格与上方一格都是空气」的位置，返回该位置上方 2 格的中心。
- * 找不到就退回高空落点——高空落点永远合法，运输蜂会自己往下飞。</p>
+ * <p>规则来自需求原文——沿着「当前位置 → 目标点」这条连线，落在连线上距目标
+ * {@code distanceFromTarget} 的那个点上。因此落点永远在当前位置与目标之间，
+ * 不会往回跳。</p>
  *
- * <p>安全约束：任何读方块的操作前都先检查区块是否已加载。
- * 逻辑蜂允许在未加载区块里存在，但 {@link ServerLevel#getBlockState} 会同步加载区块，
- * 在主线程里可能触发长时间卡顿。</p>
+ * <p>注意：这里不检查落点是否卡在方块里。逻辑蜂本身没有碰撞（{@code noPhysics}），
+ * 表现实体每 tick 由 {@code syncFromVirtual} 强行同步位置，所以卡在山体里只会有一瞬间的视觉瑕疵，
+ * 之后它继续朝目标飞、会自己出来。若以后要做「安全落点」，应该在这里加，而不是改调用方。</p>
  */
 public final class FoldLanding {
 
-    private static final int MAX_SCAN_DOWN = 64;
+    private static final double MIN_LINE_LENGTH = 1.0E-6;
 
-    public static Vec3 pick(ServerLevel level, Vec3 target, int height, int spread) {
-        double angle = level.random.nextDouble() * Math.PI * 2.0;
-        double dx = spread <= 0 ? 0.0 : Math.cos(angle) * spread;
-        double dz = spread <= 0 ? 0.0 : Math.sin(angle) * spread;
-
-        Vec3 high = target.add(dx, height, dz);
-        BlockPos base = BlockPos.containing(high);
-
-        if (!isChunkLoaded(level, base)) {
-            return high;
+    /**
+     * @param from               当前位置（必须在目标之外，且离目标比 {@code distanceFromTarget} 远）
+     * @param target             目标点
+     * @param distanceFromTarget 落点与目标之间的距离
+     * @return 连线上的落点
+     */
+    public static Vec3 pointTowardTarget(Vec3 from, Vec3 target, double distanceFromTarget) {
+        Vec3 awayFromTarget = from.subtract(target);
+        double length = awayFromTarget.length();
+        if (length < MIN_LINE_LENGTH) {
+            // 已经和目标重合，没什么可折的
+            return target;
         }
-
-        for (int dy = 0; dy < MAX_SCAN_DOWN; dy++) {
-            BlockPos candidate = base.below(dy);
-            if (!isChunkLoaded(level, candidate)) {
-                return high;
-            }
-            BlockState here = level.getBlockState(candidate);
-            BlockState above = level.getBlockState(candidate.above());
-            if (here.isAir() && above.isAir()) {
-                return Vec3.atBottomCenterOf(candidate.above(2));
-            }
-        }
-
-        return high;
-    }
-
-    private static boolean isChunkLoaded(ServerLevel level, BlockPos pos) {
-        return level.hasChunk(pos.getX() >> 4, pos.getZ() >> 4);
+        return target.add(awayFromTarget.scale(distanceFromTarget / length));
     }
 
     private FoldLanding() {

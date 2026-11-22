@@ -6,18 +6,20 @@ import net.neoforged.neoforge.common.ModConfigSpec;
  * 服务端配置：<code>config/create_hivemind-server.toml</code>。
  *
  * <p>所有字段在运行时通过 {@code .get()} 读取，不缓存，保证改配置后重启即生效。</p>
+ *
+ * <p>折跃语义（0.0.3 起）：起飞时把当前位置记为「出发点」，之后按 {@code checkIntervalTicks}
+ * 的间隔探测；当「离出发点超过 {@code minFoldDistance}」且「离目标超过 {@code maxArrivalDistance}」
+ * 同时成立时，沿「当前位置 → 目标」连线跳到距目标 {@code maxArrivalDistance} 的点，
+ * 并把该落点记为新的出发点。</p>
  */
 public final class CHMServer {
 
     public static final ModConfigSpec SPEC;
 
     public static final ModConfigSpec.BooleanValue ENABLE;
-    public static final ModConfigSpec.IntValue MIN_DISTANCE;
-    public static final ModConfigSpec.IntValue MIN_TRAVEL_TICKS;
-    public static final ModConfigSpec.IntValue ARRIVAL_HEIGHT;
-    public static final ModConfigSpec.IntValue ARRIVAL_SPREAD;
-    public static final ModConfigSpec.IntValue MAX_FOLDS_PER_TRIP;
-    public static final ModConfigSpec.IntValue FOLD_COOLDOWN_TICKS;
+    public static final ModConfigSpec.IntValue MIN_FOLD_DISTANCE;
+    public static final ModConfigSpec.IntValue MAX_ARRIVAL_DISTANCE;
+    public static final ModConfigSpec.IntValue CHECK_INTERVAL_TICKS;
     public static final ModConfigSpec.BooleanValue PARTICLES;
     public static final ModConfigSpec.BooleanValue SOUND;
 
@@ -25,7 +27,7 @@ public final class CHMServer {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
 
         b.comment(
-                "同维度远距离折跃：运输蜂先正常飞一段，剩余距离仍然很远时直接跳到目标附近，再飞完最后一段并降落。",
+                "同维度远距离折跃：运输蜂从出发点飞出一定距离后，沿目标方向跳到目标附近，再飞完最后一段并降落。",
                 "Cross-dimension delivery is NOT part of this milestone (M2).")
                 .push("fold");
 
@@ -33,29 +35,24 @@ public final class CHMServer {
                 .comment("总开关。false 时运输蜂行为与未安装本模组完全一致。")
                 .define("enable", true);
 
-        MIN_DISTANCE = b
-                .comment("剩余直线距离超过该值才考虑折跃（格）。")
-                .defineInRange("minDistance", 512, 0, 30_000_000);
+        MIN_FOLD_DISTANCE = b
+                .comment(
+                        "最小跃迁距离：当前位置与「出发点」的直线距离超过该值才允许折跃（格）。",
+                        "出发点在起飞时记录，之后每次折跃会把落点写成新的出发点。")
+                .defineInRange("minFoldDistance", 100, 16, 30_000_000);
 
-        MIN_TRAVEL_TICKS = b
-                .comment("起飞进入巡航后，至少先飞这么多 tick 才允许折跃。20 tick = 1 秒。")
-                .defineInRange("minTravelTicks", 60, 0, 72_000);
+        MAX_ARRIVAL_DISTANCE = b
+                .comment(
+                        "最大到达距离：当前位置距离「目标点」超过该值才允许折跃；",
+                        "折跃落点取在「当前位置 → 目标」连线上、距目标正好这么多格的位置。",
+                        "该值必须小于 minFoldDistance，否则折跃会在原地反复触发，本模组会自动禁用折跃。")
+                .defineInRange("maxArrivalDistance", 64, 4, 30_000_000);
 
-        ARRIVAL_HEIGHT = b
-                .comment("落点相对目标点的高度（格）。越高越安全，但要多飞一会儿。")
-                .defineInRange("arrivalHeight", 32, 4, 256);
-
-        ARRIVAL_SPREAD = b
-                .comment("落点水平随机偏移半径（格）。为 0 时正好在目标正上方，容易立刻判定到达。")
-                .defineInRange("arrivalSpread", 12, 0, 256);
-
-        MAX_FOLDS_PER_TRIP = b
-                .comment("单次巡航内最多折跃几次，防止配置过激导致来回瞬移。")
-                .defineInRange("maxFoldsPerTrip", 2, 1, 32);
-
-        FOLD_COOLDOWN_TICKS = b
-                .comment("两次折跃之间的最小间隔（tick）。")
-                .defineInRange("foldCooldownTicks", 40, 0, 72_000);
+        CHECK_INTERVAL_TICKS = b
+                .comment(
+                        "探测间隔（tick）。每多少 tick 检查一次折跃条件，20 tick = 1 秒。",
+                        "间隔越小折跃点越精确，开销也越高；默认 5 tick（0.25 秒）。")
+                .defineInRange("checkIntervalTicks", 5, 1, 200);
 
         PARTICLES = b
                 .comment("折跃时在起点与落点播放传送门粒子。")
@@ -68,6 +65,13 @@ public final class CHMServer {
         b.pop();
 
         SPEC = b.build();
+    }
+
+    /**
+     * 配置是否自洽。{@code maxArrivalDistance >= minFoldDistance} 时折跃会原地自激，必须禁用。
+     */
+    public static boolean isUsable() {
+        return MAX_ARRIVAL_DISTANCE.get() < MIN_FOLD_DISTANCE.get();
     }
 
     private CHMServer() {
