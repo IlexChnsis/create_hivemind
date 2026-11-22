@@ -1,7 +1,7 @@
 plugins {
     id 'idea'
     id 'java-library'
-    id 'net.neoforged.moddev' version '2.0.78'
+    id 'net.neoforged.moddev' version '2.0.148'
 }
 
 tasks.named('wrapper', Wrapper).configure {
@@ -19,8 +19,18 @@ base {
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 neoForge {
-    // NeoForge 版本与上游 Create: Mobile Packages 0.7.8 对齐
-    version = project.neo_version
+    // NeoForge 版本与上游 Create: Mobile Packages 0.7.8 对齐。
+    //
+    // disableRecompilation = true 是本机 workaround：
+    // NeoForm 在本机重编译 MC 源码时，会在写 net.minecraft.world.ticks.package-info
+    // 这一步抛出 IOException（message 为 null），且与 ModDevGradle(2.0.78/2.0.91/2.0.107/2.0.148)、
+    // NeoFormRuntime(1.0.13/1.0.24)、JDK(Zulu 21.0.10 / Temurin 21.0.9) 都无关。
+    // 该故障只影响开发环境里「重编译后的 MC 源码/类」，不影响本模组产出的 jar。
+    // 换到没有该故障的机器时，把这行删掉即可恢复完整重编译流程。
+    enable {
+        version = project.neo_version
+        disableRecompilation = true
+    }
 
     parchment {
         mappingsVersion = project.parchment_mappings_version

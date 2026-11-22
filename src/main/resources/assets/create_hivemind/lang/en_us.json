@@ -1,0 +1,10 @@
+{
+  "create_hivemind.configuration.fold": "Long-range fold",
+  "create_hivemind.configuration.fold.enable": "Enable fold",
+  "create_hivemind.configuration.fold.minDistance": "Minimum remaining distance",
+  "create_hivemind.configuration.fold.minTravelTicks": "Minimum travel ticks",
+  "create_hivemind.configuration.fold.arrivalHeight": "Arrival height",
+  "create_hivemind.configuration.fold.arrivalSpread": "Arrival spread",
+  "create_hivemind.configuration.fold.maxFoldsPerTrip": "Max folds per trip",
+  "create_hivemind.configuration.fold.foldCooldownTicks": "Fold cooldown"
+}

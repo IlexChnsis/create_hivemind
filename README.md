@@ -7,8 +7,42 @@ Create: Mobile Packages（CMP）的附属模组，为运输蜂（Robo Bee）增�
 - 许可：MIT
 - 目标环境：Minecraft 1.21.1 / NeoForge 21.1.219+ / Create 6.0.10+ / CMP 0.7.8
 
-> 当前状态：**M0 脚手架**。仓库只有可加载的空壳（无内容注册、无 mixin 注入、无玩法逻辑）。
-> 为什么这样做、接下来做什么，见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+> 当前状态：**M1 已实现并出包**（同维度远距离折跃）。跨维度投递（M2）尚未开始。
+> 构建产物：`build/libs/create_hivemind-1.21.1-0.0.1.jar`。尚未做游戏内运行时验证，见
+> [docs/ROADMAP.md](docs/ROADMAP.md) 与 [docs/SESSION-REFERENCE.md](docs/SESSION-REFERENCE.md)。
+
+## 功能
+
+运输蜂在**同一维度**内远距离投递时，先正常飞一小段，然后直接折跃到目标附近，再飞完最后一段并正常降落交付。
+
+触发条件（全部满足）：
+
+1. `[fold] enable = true`
+2. 当前与目标的直线距离 ≥ `minDistance`（默认 512 格）
+3. 已经历 ≥ `minTravelTicks` 个巡航 tick（默认 60，即 3 秒）
+4. 本次航程折跃次数 < `maxFoldsPerTrip`（默认 2）
+5. 距上次折跃 ≥ `foldCooldownTicks`（默认 40）
+
+落点：目标点上方 `arrivalHeight`（默认 32 格），再加半径 `arrivalSpread`（默认 12 格）的随机水平偏移，
+然后向下扫描最多 64 格，取第一个「本格与上方一格都是空气」的位置；区块未加载时直接使用高空落点。
+
+配置写在 `config/create_hivemind-server.toml`，服务器配置（改完重启生效）：
+
+```toml
+[fold]
+  enable = true
+  minDistance = 512
+  minTravelTicks = 60
+  arrivalHeight = 32
+  arrivalSpread = 12
+  maxFoldsPerTrip = 2
+  foldCooldownTicks = 40
+  particles = true
+  sound = true
+```
+
+实现方式：`RoboBeeBehaviorMixin` 在 CMP 的 `RoboBeeBehaviorController#handleNavigateToTarget` 末尾注入，
+只调用 `VirtualRobo#setPos` 把逻辑蜂挪到落点，不改状态机、不加方块、不加物品、不改存档格式。
 
 ## 为什么是附属而不是改上游
 

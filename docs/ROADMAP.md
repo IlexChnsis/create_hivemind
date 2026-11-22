@@ -90,7 +90,21 @@ CMP 现状（已核实）：
 
 > M0 的验收记录见 `docs/SESSION-REFERENCE.md` 的「M0 验收」一节。
 
-### M1 同维度远距离折跃（1–2 天）★核心
+### M1 同维度远距离折跃（1–2 天）★核心 — 已实现，待游戏内验收
+
+> 实现状态：代码已完成并出包（`BUILD SUCCESSFUL`），**尚未做游戏内运行时验证**。
+> 实际实现与下文的差异：
+> - 注入点采用 `handleNavigateToTarget` 的 **TAIL**（不是 HEAD/TAIL 两者）
+> - 配置项 `particles` 之外多了一个 `sound`（默认 true）
+> - 折跃状态用 `WeakHashMap<VirtualRobo, FoldState>` 外部持有，不往 `VirtualRobo` 注入字段
+> - mixin 使用 `remap = false`，`mixins.json` 不带 `refmap`（原因见 SESSION-REFERENCE）
+>
+> 代码位置：
+> - `robo/fold/FoldController.java` — 判定与执行
+> - `robo/fold/FoldLanding.java` — 落点选择（含未加载区块保护）
+> - `robo/fold/FoldState.java` / `FoldStateStore.java` — 单蜂折跃状态
+> - `mixin/RoboBeeBehaviorMixin.java` — 注入点
+> - `config/CHMServer.java` / `index/CHMConfigs.java` — 配置
 
 行为：起飞 → 飞 `minTravelTicks` → 距离 > `minDistance` 且未超次数 → 瞬移到目标附近 → 继续飞 → 正常降落。
 

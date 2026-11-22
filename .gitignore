@@ -27,6 +27,11 @@ libs/*.jar
 .tmpgradle
 .tmpsession
 .tmp*
+# 本机把 GRADLE_USER_HOME 指到工作区内（沙箱下唯一可写位置），不提交
+.gradle-home
+build.log
+*.gradle-home
+.dl.js
 
 # 参考源码（只读 clone，不参与构建）
 reference/

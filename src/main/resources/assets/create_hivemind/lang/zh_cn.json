@@ -1,0 +1,10 @@
+{
+  "create_hivemind.configuration.fold": "远距离折跃",
+  "create_hivemind.configuration.fold.enable": "启用折跃",
+  "create_hivemind.configuration.fold.minDistance": "触发折跃的最小剩余距离",
+  "create_hivemind.configuration.fold.minTravelTicks": "起飞后最少飞行 tick 数",
+  "create_hivemind.configuration.fold.arrivalHeight": "落点高度",
+  "create_hivemind.configuration.fold.arrivalSpread": "落点水平散布半径",
+  "create_hivemind.configuration.fold.maxFoldsPerTrip": "单次航程最大折跃次数",
+  "create_hivemind.configuration.fold.foldCooldownTicks": "折跃冷却（tick）"
+}
