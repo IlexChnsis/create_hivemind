@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "de.hivemind.create_hivemind.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "create_hivemind.refmap.json",
+  "mixins": [],
+  "client": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

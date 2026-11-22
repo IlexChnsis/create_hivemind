@@ -1,0 +1,37 @@
+# eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+
+# idea
+out
+*.ipr
+*.iws
+*.iml
+.idea
+
+# gradle
+build
+.gradle
+!gradle/wrapper/gradle-wrapper.jar
+
+# 运行目录与本地缓存
+run
+runs
+run-data
+repo
+libs/*.jar
+.tmpgradle
+.tmpsession
+.tmp*
+
+# 参考源码（只读 clone，不参与构建）
+reference/
+
+# 系统文件
+*.log
+.DS_Store
+Thumbs.db
