@@ -4,7 +4,9 @@
   "package": "de.hivemind.create_hivemind.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
-    "RoboBeeBehaviorMixin"
+    "RoboBeeBehaviorMixin",
+    "VirtualRoboEtaMixin",
+    "PlayerTargetEtaMixin"
   ],
   "client": [],
   "injectors": {

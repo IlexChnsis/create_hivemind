@@ -7,8 +7,8 @@ Create: Mobile Packages（CMP）的附属模组，为运输蜂（Robo Bee）增�
 - 许可：MIT
 - 目标环境：Minecraft 1.21.1 / NeoForge 21.1.219+ / Create 6.0.10+ / CMP 0.7.8
 
-> 当前状态：**M1 已实现并出包**（同维度远距离折跃）。跨维度投递（M2）尚未开始。
-> 构建产物：`build/libs/create_hivemind-1.21.1-0.0.1.jar`。尚未做游戏内运行时验证，见
+> 当前状态：**M1 已实现并出包**（同维度远距离折跃 + 折跃感知 ETA）。跨维度投递（M2）尚未开始。
+> 构建产物：`build/libs/create_hivemind-1.21.1-0.0.2.jar`。尚未做游戏内运行时验证，见
 > [docs/ROADMAP.md](docs/ROADMAP.md) 与 [docs/SESSION-REFERENCE.md](docs/SESSION-REFERENCE.md)。
 
 ## 功能
@@ -44,6 +44,38 @@ Create: Mobile Packages（CMP）的附属模组，为运输蜂（Robo Bee）增�
 实现方式：`RoboBeeBehaviorMixin` 在 CMP 的 `RoboBeeBehaviorController#handleNavigateToTarget` 末尾注入，
 只调用 `VirtualRobo#setPos` 把逻辑蜂挪到落点，不改状态机、不加方块、不加物品、不改存档格式。
 
+## 剩余时间（ETA）怎么算
+
+玩家在 Toast 里看到的剩余时间**不是**「剩余直线距离 ÷ 速度」，而是**实际预期还要飞多久**：
+
+```
+剩余时间 = 总路程时间 − 折跃路段按正常速度折算的时间
+```
+
+因为折跃会让运输蜂瞬间走完一大段路，若直接按直线距离算，折跃前会严重高估、折跃后又突然归零。
+`robo/eta/EtaModel` 按与折跃判定完全一致的规则提前把折跃计入：
+
+1. 总开关关闭、距离不足、次数用尽 → 完全等于上游公式，不做任何修饰；
+2. 还需补足 `minTravelTicks` → 先折算这段要飞的距离；
+3. 补足后距离仍 ≥ `minDistance` → 判定下一次巡航必定折跃，加上「落点 → 目标上方 2 格」这段；
+4. 补足后距离已经不够 → 不会折跃，按普通公式算。
+
+折跃真正发生后自动退回第 1 条，所以数值单调下降、不会跳变。
+落点距离用 `sqrt(arrivalSpread² + (arrivalHeight-2)²)` 估算，误差来自随机偏移方向与地形高度。
+
+示例（`beeSpeed = 6`，5000 格投递，默认配置）：
+
+| 阶段 | 显示的剩余时间 |
+|---|---|
+| 起飞瞬间（上游算法会显示） | 834 秒 |
+| 起飞瞬间（本模组显示） | 9 秒 |
+| 飞了 30 tick | 7 秒 |
+| 折跃发生 | 6 秒 |
+
+注入点：`VirtualRoboEtaMixin` 覆盖 `updateEta()` 的最终值（影响所有读取 ETA 的地方），
+`PlayerTargetEtaMixin` 在 `updateEtaToast` 开头先覆写再让 Toast 读取
+——因为 Toast 在 `handleNavigateToTarget` 里是「先 setETA 再立刻读」，早于 `updateEta()`。
+
 ## 为什么是附属而不是改上游
 
 CMP 0.7.8 中：
@@ -58,29 +90,30 @@ CMP 0.7.8 中：
 
 ```
 create_hivemind/
-├── build.gradle                  # ModDevGradle 2.0.78，Java 21 toolchain
+├── build.gradle                  # ModDevGradle 2.0.148，Java 21 toolchain
 ├── gradle.properties             # 版本号与 mod 元信息，全部在此集中管理
 ├── settings.gradle
 ├── gradle/wrapper/               # Gradle 8.14.2（固定版本）
 ├── LICENSE                       # MIT
 ├── docs/
 │   ├── ROADMAP.md                # 需求、路线、验收标准、风险
-│   └── SESSION-REFERENCE.md      # 调研来源与结论摘要
+│   └── SESSION-REFERENCE.md      # 调研来源、构建验证与已知环境问题
 ├── src/main/templates/META-INF/neoforge.mods.toml   # 占位符模板，构建时展开
 ├── src/main/resources/
-│   └── create_hivemind.mixins.json                  # 空 mixin 配置（M0）
+│   ├── create_hivemind.mixins.json                  # 3 个 mixin 的注册
+│   └── assets/create_hivemind/lang/{en_us,zh_cn}.json
 └── src/main/java/de/hivemind/create_hivemind/
-    └── CreateHiveMind.java                          # @Mod 空壳
-```
-
-M1 起新增的代码位置（已在 ROADMAP 规划，尚未创建）：
-
-```
-src/main/java/de/hivemind/create_hivemind/
-├── index/CHMConfigs.java
-├── config/CHMServer.java
-├── robo/fold/{FoldController,FoldLanding,FoldStateStore}.java
-└── mixin/{RoboBehaviorMixin,VirtualRoboAccessor,PlayerTargetMixin}.java
+    ├── CreateHiveMind.java                          # @Mod 入口
+    ├── index/CHMConfigs.java                        # 配置注册
+    ├── config/CHMServer.java                        # [fold] 九个配置键
+    ├── robo/fold/FoldController.java                # 折跃判定与执行
+    ├── robo/fold/FoldLanding.java                   # 落点选择
+    ├── robo/fold/FoldState.java                     # 单蜂折跃状态
+    ├── robo/fold/FoldStateStore.java                # 弱引用状态表
+    ├── robo/eta/EtaModel.java                       # 折跃感知的 ETA
+    ├── mixin/RoboBeeBehaviorMixin.java              # 注入 handleNavigateToTarget
+    ├── mixin/VirtualRoboEtaMixin.java               # 注入 updateEta
+    └── mixin/PlayerTargetEtaMixin.java              # 注入 updateEtaToast
 ```
 
 ## 构建

@@ -19,6 +19,13 @@ public final class FoldStateStore {
         return STATES.computeIfAbsent(robo, r -> new FoldState());
     }
 
+    /**
+     * 只读查询，不创建条目。ETA 每 tick 都会问一次，用 get 会为每只蜂凭空造状态。
+     */
+    public static FoldState peek(VirtualRobo robo) {
+        return robo == null ? null : STATES.get(robo);
+    }
+
     public static void forget(VirtualRobo robo) {
         STATES.remove(robo);
     }

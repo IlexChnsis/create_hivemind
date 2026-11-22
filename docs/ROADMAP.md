@@ -103,8 +103,38 @@ CMP 现状（已核实）：
 > - `robo/fold/FoldController.java` — 判定与执行
 > - `robo/fold/FoldLanding.java` — 落点选择（含未加载区块保护）
 > - `robo/fold/FoldState.java` / `FoldStateStore.java` — 单蜂折跃状态
-> - `mixin/RoboBeeBehaviorMixin.java` — 注入点
+> - `robo/eta/EtaModel.java` — 折跃感知的剩余时间（0.0.2 追加）
+> - `mixin/RoboBeeBehaviorMixin.java` — 注入 `handleNavigateToTarget` 的 TAIL
+> - `mixin/VirtualRoboEtaMixin.java` — 注入 `updateEta` 的 TAIL
+> - `mixin/PlayerTargetEtaMixin.java` — 注入 `updateEtaToast` 的 HEAD
 > - `config/CHMServer.java` / `index/CHMConfigs.java` — 配置
+
+### M1b 折跃感知的 ETA（0.0.2，已完成）
+
+问题：上游 `CMPHelper.calcETA` 只算 `剩余直线距离 / beeSpeed`。折跃前严重高估（5000 格 ≈ 834 秒），
+折跃后突然归零，玩家看到的「剩余时间」与实际体验不符。
+
+口径（用户指定）：
+
+```
+剩余时间 = 总路程时间 − 折跃路段按正常速度折算的时间
+        = 这段路实际预期要飞多久
+```
+
+实现要点：
+
+- `EtaModel.predictedSeconds()` 复用与 `FoldController` 一致的判定（开关 / `minDistance` /
+  `minTravelTicks` / `maxFoldsPerTrip`），预测下一次折跃并把落点距离计入
+- 折跃未发生时不改动上游数值；折跃后自动退回上游公式，保证单调下降、无跳变
+- 两个注入点：`updateEta()` 的 TAIL 覆盖最终值；`updateEtaToast` 的 HEAD 保证 Toast 读到新值
+  （Toast 在 `handleNavigateToTarget` 里「先 setETA 再立刻读」，早于 `updateEta()`）
+- `CHMServer.SPEC.isLoaded()` 守卫，专用客户端不访问 config
+- 落点距离按 `sqrt(arrivalSpread² + (arrivalHeight-2)²)` 估算，误差来自随机偏移方向与地形高度
+
+验收（待游戏内确认）：5000 格投递时 Toast 显示 9 秒 → 7 秒 → 折跃后 6 秒；
+短距离（< 512 格）显示值与上游一致。
+
+### M1 同维度远距离折跃（1–2 天）★核心 — 已实现，待游戏内验收
 
 行为：起飞 → 飞 `minTravelTicks` → 距离 > `minDistance` 且未超次数 → 瞬移到目标附近 → 继续飞 → 正常降落。
 
