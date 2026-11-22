@@ -124,11 +124,12 @@ CMP 现状（已核实）：
 - 自激保护：`maxArrivalDistance >= minFoldDistance` 时 `CHMServer.isUsable()` 返回 false，直接禁用折跃
 - 落点不做地形检测：逻辑蜂无碰撞、表现实体每 tick 被 `syncFromVirtual` 强同步，卡方块只是一瞬视觉瑕疵
 
-配置（`config/create_hivemind-server.toml`，6 项）：
+配置（`config/create_hivemind-server.toml`，7 项）：
 
 ```toml
 [fold]
-  enable = true
+  enableForPlayers = true    # 发往玩家时是否折跃（0.0.4）
+  enableForPorts = true      # 发往另一个港口时是否折跃（0.0.4）
   minFoldDistance = 100      # 与出发点的直线距离超过这个值才折跃
   maxArrivalDistance = 64    # 离目标小于这个距离就不折跃；折跃落点距目标正好这么多
   checkIntervalTicks = 5     # 探测间隔，20 tick = 1 秒
@@ -139,10 +140,26 @@ CMP 现状（已核实）：
 > 「与出发点的距离」指**当前点到出发点的直线距离**（`here.distanceTo(anchor)`），
 > 不是沿飞行轨迹的路径积分。运输蜂基本沿直线朝目标飞，所以这个值从 0 单调增长。
 
+### M1d 按目标类型分开关（0.0.4）
+
+需求：区分发往玩家与发往另一个港口的无人机，分别控制是否折跃。
+
+实现：`robo/fold/FoldGate`
+
+- `kindOf(target)` 用 `instanceof` 判定 `PlayerTarget` / `BeePortBlockEntityTarget`
+- `allows(target)` 按类型取 `ENABLE_FOR_PLAYERS` / `ENABLE_FOR_PORTS`，未知类型一律 false
+- `FoldController` 与 `EtaModel` 共用此判定，避免「显示按会折跃算、实际不折跃」
+- 原 `enable` 总开关被两个分类型开关取代（两者都 false 等价于关闭）
+
+**坑（已规避）**：上游 `BeePortBlockEntityTarget.asBeePortBlockEntity()` 在目标区块未加载时返回
+`null`。若用它判类型，远距离港口目标会被误判为「未知类型」而永不折跃——正好废掉主场景。
+因此类型判定只看对象类型，不看区块加载状态。
+
 删除的旧配置及原因：
 
 | 删除项 | 原因 |
 |---|---|
+| `enable` | 拆成 `enableForPlayers` / `enableForPorts`（0.0.4） |
 | `minDistance` | 改为相对出发点的 `minFoldDistance` |
 | `minTravelTicks` | 改由距离驱动，不按时间 |
 | `arrivalHeight` / `arrivalSpread` | 落点改为连线上的几何点，不再抬升/散布 |

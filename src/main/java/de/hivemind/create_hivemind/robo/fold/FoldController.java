@@ -15,8 +15,10 @@ import net.minecraft.world.phys.Vec3;
  * 此时运输蜂已经朝目标推进了一 tick，位置已是本 tick 的结果，
  * 折跃后下一 tick 状态机自然继续跑 {@code NAVIGATE_TO_TARGET}，无需改状态机。</p>
  *
- * <p>判定条件（两者同时成立才折跃）：</p>
+ * <p>判定条件（全部成立才折跃）：</p>
  * <ol>
+ *   <li>目标类型对应的开关开启（{@link FoldGate}）：玩家看 {@code enableForPlayers}，
+ *       港口看 {@code enableForPorts}</li>
  *   <li>当前位置 → 出发点 的距离 &gt; {@code minFoldDistance}</li>
  *   <li>当前位置 → 目标点 的距离 &gt; {@code maxArrivalDistance}</li>
  * </ol>
@@ -34,9 +36,6 @@ public final class FoldController {
         if (robo == null) {
             return false;
         }
-        if (!CHMServer.ENABLE.get() || !CHMServer.isUsable()) {
-            return false;
-        }
 
         ServerLevel level = robo.getServerLevel();
         if (level == null) {
@@ -45,6 +44,11 @@ public final class FoldController {
 
         Vec3 targetPos = robo.getTargetPosition();
         if (targetPos == null) {
+            return false;
+        }
+
+        // 目标是玩家还是港口，决定看哪个开关（顺带处理配置未加载 / 数值不自洽）
+        if (!FoldGate.allows(robo.getTarget())) {
             return false;
         }
 

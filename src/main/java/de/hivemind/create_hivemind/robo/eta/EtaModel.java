@@ -1,6 +1,7 @@
 package de.hivemind.create_hivemind.robo.eta;
 
 import de.hivemind.create_hivemind.config.CHMServer;
+import de.hivemind.create_hivemind.robo.fold.FoldGate;
 import de.hivemind.create_hivemind.robo.fold.FoldState;
 import de.hivemind.create_hivemind.robo.fold.FoldStateStore;
 import de.theidler.create_mobile_packages.blocks.bee_port.RoboRequest;
@@ -63,8 +64,9 @@ public final class EtaModel {
         int speed = Math.max(1, CMPConfigs.server().beeSpeed.get());
         double toTarget = here.distanceTo(target);
 
-        // 专用客户端或配置尚未加载时不要访问 config，否则 get() 会抛 IllegalStateException
-        if (!CHMServer.SPEC.isLoaded() || !CHMServer.ENABLE.get() || !CHMServer.isUsable()) {
+        // 目标类型对应的开关关闭 / 配置未加载 / 数值不自洽 → 显示值完全等于上游公式。
+        // 与 FoldController 走同一个 FoldGate，避免「按会折跃计算但实际不折跃」。
+        if (!FoldGate.allows(robo.getTarget())) {
             return baseline(toTarget, speed);
         }
 

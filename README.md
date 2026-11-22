@@ -15,25 +15,44 @@ Create: Mobile Packages（CMP）的附属模组，为运输蜂（Robo Bee）增�
 
 运输蜂在**同一维度**内远距离投递时，朝目标飞出一段后沿连线折跃到目标附近，再飞完最后一段并正常降落交付。
 
+### 目标类型开关（0.0.4 起）
+
+折跃可以按目标类型分别关闭：
+
+| 目标类型 | 配置项 | 说明 |
+|---|---|---|
+| 玩家 | `enableForPlayers` | 地址解析到玩家（`@名字` 或玩家名） |
+| 港口 | `enableForPorts` | 地址解析到另一个 Robo Bee Port |
+
+两个都设为 `false` 时，运输蜂行为与未安装本模组**完全一致**（包括 ETA 显示）。
+
+类型判定看目标对象的实际类型，**不看区块是否加载**——因为远距离投递常常目标区块未加载，
+而上游的 `asBeePortBlockEntity()` 在这种情况下会返回 `null`，用它判类型会让港口目标永远不折跃。
+
 ### 折跃逻辑（0.0.3 起：锚点式）
 
 起飞时把当前位置记为**出发点（anchor）**，之后按 `checkIntervalTicks` 的间隔探测。
-以下两条**同时成立**时折跃：
+以下三条**同时成立**时折跃：
 
-1. 当前位置 → **出发点** 的距离 > `minFoldDistance`
-2. 当前位置 → **目标点** 的距离 > `maxArrivalDistance`
+1. 目标类型对应的开关开启（玩家 / 港口分别控制）
+2. 当前位置 → **出发点** 的直线距离 > `minFoldDistance`
+3. 当前位置 → **目标点** 的直线距离 > `maxArrivalDistance`
+
+> 「与出发点的距离」是当前点到出发点的欧氏距离（`here.distanceTo(anchor)`），
+> 不是沿飞行轨迹的路径积分。
 
 折跃落点：在「当前位置 → 目标点」这条连线上，取距目标正好 `maxArrivalDistance` 的那个点。
 **落点随即成为新的出发点**，所以一次航程可以连续折跃多次，直到离目标足够近。
 
-因为折跃后「离目标 = `maxArrivalDistance`」，第 2 条不再成立，循环会自然收敛，不需要次数上限。
+因为折跃后「离目标 = `maxArrivalDistance`」，第 3 条不再成立，循环会自然收敛，不需要次数上限。
 若有人把 `maxArrivalDistance` 配成 ≥ `minFoldDistance`，折跃会原地自激，此时模组**自动禁用折跃**。
 
 配置写在 `config/create_hivemind-server.toml`（服务器配置，改完重启生效）：
 
 ```toml
 [fold]
-  enable = true
+  enableForPlayers = true    # 发往玩家时是否折跃
+  enableForPorts = true      # 发往另一个港口时是否折跃
   minFoldDistance = 100
   maxArrivalDistance = 64
   checkIntervalTicks = 5
@@ -41,8 +60,9 @@ Create: Mobile Packages（CMP）的附属模组，为运输蜂（Robo Bee）增�
   sound = true
 ```
 
+> 0.0.3 的 `enable` 总开关已被 `enableForPlayers` / `enableForPorts` 取代（0.0.4）。
 > 0.0.2 的 `minDistance` / `minTravelTicks` / `arrivalHeight` / `arrivalSpread` /
-> `maxFoldsPerTrip` / `foldCooldownTicks` 已全部删除。旧 toml 里残留的键会被 NeoForge 忽略，
+> `maxFoldsPerTrip` / `foldCooldownTicks` 早已删除。旧 toml 里残留的键会被 NeoForge 忽略，
 > 删掉文件重新生成即可。
 
 实现方式：`RoboBeeBehaviorMixin` 在 CMP 的 `RoboBeeBehaviorController#handleNavigateToTarget` 末尾注入，

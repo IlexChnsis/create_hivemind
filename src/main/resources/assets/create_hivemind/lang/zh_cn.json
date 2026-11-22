@@ -1,6 +1,7 @@
 {
   "create_hivemind.configuration.fold": "远距离折跃",
-  "create_hivemind.configuration.fold.enable": "启用折跃",
+  "create_hivemind.configuration.fold.enableForPlayers": "对玩家投递启用折跃",
+  "create_hivemind.configuration.fold.enableForPorts": "对港口投递启用折跃",
   "create_hivemind.configuration.fold.minFoldDistance": "最小跃迁距离",
   "create_hivemind.configuration.fold.maxArrivalDistance": "最大到达距离",
   "create_hivemind.configuration.fold.checkIntervalTicks": "探测间隔（tick）",

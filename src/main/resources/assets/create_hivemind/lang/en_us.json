@@ -1,6 +1,7 @@
 {
   "create_hivemind.configuration.fold": "Long-range fold",
-  "create_hivemind.configuration.fold.enable": "Enable fold",
+  "create_hivemind.configuration.fold.enableForPlayers": "Enable for player deliveries",
+  "create_hivemind.configuration.fold.enableForPorts": "Enable for port deliveries",
   "create_hivemind.configuration.fold.minFoldDistance": "Minimum fold distance",
   "create_hivemind.configuration.fold.maxArrivalDistance": "Maximum arrival distance",
   "create_hivemind.configuration.fold.checkIntervalTicks": "Check interval (ticks)",

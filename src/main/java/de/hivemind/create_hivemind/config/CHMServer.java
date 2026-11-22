@@ -16,7 +16,8 @@ public final class CHMServer {
 
     public static final ModConfigSpec SPEC;
 
-    public static final ModConfigSpec.BooleanValue ENABLE;
+    public static final ModConfigSpec.BooleanValue ENABLE_FOR_PLAYERS;
+    public static final ModConfigSpec.BooleanValue ENABLE_FOR_PORTS;
     public static final ModConfigSpec.IntValue MIN_FOLD_DISTANCE;
     public static final ModConfigSpec.IntValue MAX_ARRIVAL_DISTANCE;
     public static final ModConfigSpec.IntValue CHECK_INTERVAL_TICKS;
@@ -28,12 +29,21 @@ public final class CHMServer {
 
         b.comment(
                 "同维度远距离折跃：运输蜂从出发点飞出一定距离后，沿目标方向跳到目标附近，再飞完最后一段并降落。",
+                "折跃开关按目标类型分开控制：发往玩家的航班与发往另一个港口的航班可以分别启用或禁用。",
                 "Cross-dimension delivery is NOT part of this milestone (M2).")
                 .push("fold");
 
-        ENABLE = b
-                .comment("总开关。false 时运输蜂行为与未安装本模组完全一致。")
-                .define("enable", true);
+        ENABLE_FOR_PLAYERS = b
+                .comment(
+                        "对「玩家目标」启用折跃。即运输蜂飞向玩家（地址以 @ 开头解析到的玩家）时是否允许折跃。",
+                        "两个开关都为 false 时，运输蜂行为与未安装本模组完全一致。")
+                .define("enableForPlayers", true);
+
+        ENABLE_FOR_PORTS = b
+                .comment(
+                        "对「港口目标」启用折跃。即运输蜂飞向另一个 Robo Bee Port 时是否允许折跃。",
+                        "两个开关都为 false 时，运输蜂行为与未安装本模组完全一致。")
+                .define("enableForPorts", true);
 
         MIN_FOLD_DISTANCE = b
                 .comment(
