@@ -41,10 +41,11 @@ public abstract class PortableStockTickerCycleMixin {
         }
         var next = ChannelRegistry.cycle(stack, true);
         if (next != null) {
+            // 服务端拿不到网络名（那个类只在客户端存在），用按顺序生成的回退名。
             player.displayClientMessage(
                     net.minecraft.network.chat.Component.translatable(
                             "create_hivemind.portable_stock_ticker.channel_switched",
-                            ChannelRegistry.displayName(stack, next))
+                            ChannelRegistry.fallbackName(stack, next))
                             .withStyle(net.minecraft.ChatFormatting.GOLD), true);
         }
         cir.setReturnValue(net.minecraft.world.InteractionResultHolder.success(stack));

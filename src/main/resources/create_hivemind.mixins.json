@@ -11,8 +11,7 @@
     "PortableStockTickerCycleMixin"
   ],
   "client": [
-    "client.PortableStockTickerChannelScreenMixin",
-    "client.NetworkSettingsScreenInvoker"
+    "client.PortableStockTickerChannelScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

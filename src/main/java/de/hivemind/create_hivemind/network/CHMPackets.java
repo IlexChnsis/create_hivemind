@@ -12,14 +12,13 @@ import java.util.Locale;
 /**
  * 本模组自己的网络包。
  *
- * <p>不复用 CMP 的 {@code CMPPackets} 枚举（那是 enum，无法扩展），
+ * <p>不复用 CMP 的 {@code CMPPackets} 枚举（enum 无法扩展），
  * 而是用同一套 Catnip 注册器另开一个通道。</p>
  */
 public enum CHMPackets implements BasePacketPayload.PacketTypeProvider {
 
     // Client -> Server
-    SELECT_CHANNEL(SelectChannelPacket.class, SelectChannelPacket.STREAM_CODEC),
-    RENAME_CHANNEL(RenameChannelPacket.class, RenameChannelPacket.STREAM_CODEC);
+    SELECT_CHANNEL(SelectChannelPacket.class, SelectChannelPacket.STREAM_CODEC);
 
     private final CatnipPacketRegistry.PacketType<?> type;
 
