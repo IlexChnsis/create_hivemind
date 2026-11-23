@@ -77,6 +77,7 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 repositories {
     maven { url = "https://maven.createmod.net" }    // Create, Ponder, Flywheel
     maven { url = "https://mvn.devos.one/snapshots" } // Registrate
+    maven { url = "https://dl.zznty.ru/maven" }       // Create Factory Abstractions（CMP 的界面实现了它的接口）
     maven { url = "https://api.modrinth.com/maven" }  // Create: Mobile Packages
     maven { url = "https://cursemaven.com" }         // CurseForge 兜底
     mavenCentral()
@@ -91,6 +92,12 @@ dependencies {
     compileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}")
     runtimeOnly("dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}")
     implementation("com.tterrag.registrate:Registrate:${registrate_version}")
+
+    // CMP 的 PortableStockTickerScreen 实现了这两个接口，缺了它编译器无法解析该类的父类型链：
+    //   ru.zznty.create_factory_abstractions.api.generic.crafting.OrderProvider
+    //   ru.zznty.create_factory_abstractions.api.generic.search.CategoriesProvider
+    // 只需 compileOnly：运行时由 CMP 自己的 jarJar 提供。
+    compileOnly("ru.zznty:create_factory_abstractions-${minecraft_version}:${create_factory_abstractions_version}")
 
     // 本附属所依附的模组：Create: Mobile Packages（二进制依赖，不复制其源码）
     // Modrinth maven 坐标格式为 group:artifact:version；这里 version 段用 versionId（比版本号更唯一）。

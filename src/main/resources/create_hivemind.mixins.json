@@ -6,9 +6,14 @@
   "mixins": [
     "RoboBeeBehaviorMixin",
     "VirtualRoboEtaMixin",
-    "PlayerTargetEtaMixin"
+    "PlayerTargetEtaMixin",
+    "PortableStockTickerBindMixin",
+    "PortableStockTickerCycleMixin"
   ],
-  "client": [],
+  "client": [
+    "client.PortableStockTickerChannelScreenMixin",
+    "client.NetworkSettingsScreenInvoker"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

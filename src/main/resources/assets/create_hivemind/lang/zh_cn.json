@@ -6,5 +6,10 @@
   "create_hivemind.configuration.fold.maxArrivalDistance": "最大到达距离",
   "create_hivemind.configuration.fold.checkIntervalTicks": "探测间隔（tick）",
   "create_hivemind.configuration.fold.particles": "粒子效果",
-  "create_hivemind.configuration.fold.sound": "音效"
+  "create_hivemind.configuration.fold.sound": "音效",
+
+  "create_hivemind.logistically_linked.untuned": "已解绑该物流网络",
+  "create_hivemind.portable_stock_ticker.channels_full": "频道已满（最多 8 个）",
+  "create_hivemind.portable_stock_ticker.channel_switched": "当前频道：%s",
+  "create_hivemind.portable_stock_ticker.channel_default_name": "物流网络%s"
 }

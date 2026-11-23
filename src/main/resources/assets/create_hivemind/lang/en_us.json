@@ -6,5 +6,10 @@
   "create_hivemind.configuration.fold.maxArrivalDistance": "Maximum arrival distance",
   "create_hivemind.configuration.fold.checkIntervalTicks": "Check interval (ticks)",
   "create_hivemind.configuration.fold.particles": "Particles",
-  "create_hivemind.configuration.fold.sound": "Sound"
+  "create_hivemind.configuration.fold.sound": "Sound",
+
+  "create_hivemind.logistically_linked.untuned": "Network unbound",
+  "create_hivemind.portable_stock_ticker.channels_full": "Channel list is full (max 8)",
+  "create_hivemind.portable_stock_ticker.channel_switched": "Channel: %s",
+  "create_hivemind.portable_stock_ticker.channel_default_name": "Network %s"
 }
