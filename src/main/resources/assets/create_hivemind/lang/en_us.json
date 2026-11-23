@@ -8,6 +8,7 @@
   "create_hivemind.configuration.fold.particles": "Particles",
   "create_hivemind.configuration.fold.sound": "Sound",
 
+  "create_hivemind.logistically_linked.bound": "Bound to this network",
   "create_hivemind.logistically_linked.untuned": "Network unbound",
   "create_hivemind.portable_stock_ticker.channels_full": "Channel list is full (max 8)",
   "create_hivemind.portable_stock_ticker.channel_switched": "Channel: %s",

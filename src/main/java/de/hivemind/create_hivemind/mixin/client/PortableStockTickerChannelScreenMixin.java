@@ -104,15 +104,16 @@ public abstract class PortableStockTickerChannelScreenMixin {
         return data != null && data.owner != null && data.owner.equals(player.getUUID());
     }
 
-    /** 网络显示名：优先用 CMP 的网络名，没有则按绑定顺序回退「物流网络N」。 */
+    /** 网络显示名：优先用 CMP 的网络名，没有则按固定序号回退「物流网络N」。 */
     @Unique
     private String chm$rawName(ItemStack stack, UUID network) {
         var data = ClientNetworkDataStorage.getNetworkData(network);
         if (data != null && data.name != null && !data.name.isBlank()) {
             return data.name;
         }
-        int index = ChannelRegistry.bound(stack).indexOf(network);
-        return index < 0 ? "\u7269\u6d41\u7f51\u7edc" : "\u7269\u6d41\u7f51\u7edc" + (index + 1);
+        // 与服务端 ChannelRegistry.fallbackName 用同一套序号，
+        // 不能用列表索引：已命名的网络也占着序号（绑定 1、2 → 命名 2 → 新增得 3）
+        return ChannelRegistry.fallbackName(stack, network);
     }
 
     @Unique

@@ -2,7 +2,6 @@ package de.hivemind.create_hivemind.mixin;
 
 import com.simibubi.create.content.logistics.packagerLink.LogisticallyLinkedBehaviour;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
-import com.simibubi.create.foundation.utility.CreateLang;
 import de.hivemind.create_hivemind.logistics.ChannelRegistry;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -75,11 +74,10 @@ public abstract class PortableStockTickerBindMixin {
                         : ChannelRegistry.bind(stack, link.freqId);
 
         switch (result) {
-            case BOUND, ALREADY_BOUND -> {
-                // 复用 Create 自己的绑定提示，与原版 stock_link 完全一致
-                player.displayClientMessage(
-                        CreateLang.translateDirect("logistically_linked.tuned"), true);
-            }
+            // 用自己的文案，不用 Create 的 logistically_linked.tuned（那是「已设定至此网络」）
+            case BOUND, ALREADY_BOUND -> player.displayClientMessage(
+                    Component.translatable("create_hivemind.logistically_linked.bound")
+                            .withStyle(ChatFormatting.GOLD), true);
             case UNBOUND -> player.displayClientMessage(
                     Component.translatable("create_hivemind.logistically_linked.untuned")
                             .withStyle(ChatFormatting.GRAY), true);
