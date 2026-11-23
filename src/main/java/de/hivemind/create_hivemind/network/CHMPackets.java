@@ -18,7 +18,8 @@ import java.util.Locale;
 public enum CHMPackets implements BasePacketPayload.PacketTypeProvider {
 
     // Client -> Server
-    SELECT_CHANNEL(SelectChannelPacket.class, SelectChannelPacket.STREAM_CODEC);
+    SELECT_CHANNEL(SelectChannelPacket.class, SelectChannelPacket.STREAM_CODEC),
+    RENAME_CHANNEL(RenameChannelPacket.class, RenameChannelPacket.STREAM_CODEC);
 
     private final CatnipPacketRegistry.PacketType<?> type;
 

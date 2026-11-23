@@ -1,13 +1,11 @@
 package de.hivemind.create_hivemind.mixin.client;
 
 import de.hivemind.create_hivemind.logistics.ChannelRegistry;
+import de.hivemind.create_hivemind.network.RenameChannelPacket;
 import de.hivemind.create_hivemind.network.SelectChannelPacket;
 import de.theidler.create_mobile_packages.items.portable_stock_ticker.ClientScreenStorage;
 import de.theidler.create_mobile_packages.items.portable_stock_ticker.PortableStockTicker;
 import de.theidler.create_mobile_packages.items.portable_stock_ticker.PortableStockTickerScreen;
-import de.theidler.create_mobile_packages.network_settings.ClientNetworkDataStorage;
-import de.theidler.create_mobile_packages.network_settings.RequestPlayerNetworksPacket;
-import de.theidler.create_mobile_packages.network_settings.SetNetworkNamePackage;
 import net.createmod.catnip.platform.CatnipServices;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -34,8 +32,8 @@ import java.util.UUID;
  *
  * <p>交互分工：</p>
  * <ul>
- *   <li>点<b>标题文字</b> → 就地改名（需网络 owner；与港口命名是同一个字段）</li>
- *   <li>点<b>最右侧箭头</b> → 展开/收起频道下拉</li>
+ *   <li>点<b>标题文字</b> → 就地给当前频道起别名（预填当前显示名）</li>
+ *   <li>点<b>右侧箭头</b> → 展开/收起频道下拉</li>
  *   <li>点<b>下拉项</b> → 切换到该网络</li>
  * </ul>
  *
@@ -43,8 +41,9 @@ import java.util.UUID;
  * 这里不注册 EditBox（{@code addRenderableWidget} 是 protected，mixin 调不到），
  * 改为自己维护编辑缓冲，在 {@code charTyped} / {@code keyPressed} 里处理输入。</p>
  *
- * <p>权限：{@code SetNetworkNamePackage} 在服务端只接受 network owner，
- * 非 owner 的请求会被静默丢弃。所以非 owner 点击标题直接忽略，避免「以为改了其实没改」。</p>
+ * <p><b>别名是管理器 specific 的</b>：写在物品的 {@code NETWORK_NAMES} 组件上，
+ * 不是 CMP 的 {@code LogisticsNetwork.name}（那个是全局名，只有 owner 能改）。
+ * 因此这里无需任何权限校验，每个玩家都能给同一个网络起自己的叫法。</p>
  */
 @Mixin(PortableStockTickerScreen.class)
 public abstract class PortableStockTickerChannelScreenMixin {
@@ -52,9 +51,9 @@ public abstract class PortableStockTickerChannelScreenMixin {
     @Unique
     private static final String CHM_TITLE_PREFIX = "\u4fbf\u643a\u5f0f\u4ed3\u5e93\u7ba1\u7406\u5668\uff1a";
 
-    /** 网络名最大字符数，与服务端 SetNetworkNamePackage 的 maxLength 25 保持余量。 */
+    /** 别名最大字符数，与 RenameChannelPacket.MAX_NAME_LENGTH 一致。 */
     @Unique
-    private static final int CHM_MAX_NAME_CHARS = 20;
+    private static final int CHM_MAX_NAME_CHARS = RenameChannelPacket.MAX_NAME_LENGTH;
 
     @Unique
     private static final int CHM_ROW_HEIGHT = 12;
@@ -104,30 +103,15 @@ public abstract class PortableStockTickerChannelScreenMixin {
         return found == null ? ItemStack.EMPTY : found;
     }
 
-    /** 当前玩家是否是这个网络的 owner。只有 owner 能改名。 */
-    @Unique
-    private boolean chm$canRename(UUID network) {
-        var player = Minecraft.getInstance().player;
-        if (player == null || network == null) {
-            return false;
-        }
-        var data = ClientNetworkDataStorage.getNetworkData(network);
-        return data != null && data.owner != null && data.owner.equals(player.getUUID());
-    }
-
-    /** 网络显示名：已命名则用 CMP 的名字，未命名则按固定序号回退「物流网络N」。 */
+    /**
+     * 网络显示名：别名优先，其次序号默认名「物流网络N」。
+     *
+     * <p>别名存在<b>物品</b>上（{@code NETWORK_NAMES}），因此每个管理器可以有不同的叫法。
+     * 这与 CMP 的 {@code LogisticsNetwork.name}（全局、owner 才能改）是两件事。</p>
+     */
     @Unique
     private String chm$rawName(ItemStack stack, UUID network) {
-        var data = ClientNetworkDataStorage.getNetworkData(network);
-        // 注意：不能用「名字非空」判断是否已命名。CMP 对未命名网络返回硬编码的
-        // "Unnamed Network"，永远非空，会把序号回退逻辑整个挡住。
-        String name = data == null ? null : data.name;
-        if (!ChannelRegistry.isDefaultName(name)) {
-            return name;
-        }
-        // 与服务端 ChannelRegistry.fallbackName 用同一套序号，
-        // 不能用列表索引：已命名的网络也占着序号（绑定 1、2 → 命名 2 → 新增得 3）
-        return ChannelRegistry.fallbackName(stack, network);
+        return ChannelRegistry.displayName(stack, network);
     }
 
     @Unique
@@ -175,12 +159,6 @@ public abstract class PortableStockTickerChannelScreenMixin {
     )
     private MutableComponent chm$hideVanillaTitle(String key) {
         return Component.empty();
-    }
-
-    /** 打开界面时拉一次网络名数据，否则标题只能显示「物流网络N」。 */
-    @Inject(method = "init", at = @At("TAIL"), require = 1, remap = false)
-    private void chm$requestNetworkNames(CallbackInfo ci) {
-        CatnipServices.NETWORK.sendToServer(RequestPlayerNetworksPacket.INSTANCE);
     }
 
     @Inject(method = "renderBg", at = @At("TAIL"), require = 1, remap = false)
@@ -307,18 +285,15 @@ public abstract class PortableStockTickerChannelScreenMixin {
             return;
         }
 
-        // 标题文字：进入改名（仅 owner）
+        // 标题文字：进入改名（别名是本地数据，任何玩家都能改自己的）
         if (inTitleRow && active != null
                 && mouseX >= x + 4 && mouseX < arrowLeft) {
-            if (chm$canRename(active)) {
-                chm$dropdownOpen = false;
-                chm$editing = true;
-                // 初始值：真命名过就带出来；CMP 的占位默认名留空，方便直接输入
-                var data = ClientNetworkDataStorage.getNetworkData(active);
-                String existing = data == null ? null : data.name;
-                chm$editBuffer = ChannelRegistry.isDefaultName(existing) ? "" : existing;
-                cir.setReturnValue(true);
-            }
+            chm$dropdownOpen = false;
+            chm$editing = true;
+            // 编辑框预填「当前看到的那个名字」：有别名就是别名，否则是序号默认名。
+            // 用户要求重命名时显示原本的名字。
+            chm$editBuffer = chm$rawName(stack, active);
+            cir.setReturnValue(true);
             return;
         }
 
@@ -358,7 +333,9 @@ public abstract class PortableStockTickerChannelScreenMixin {
             return;
         }
         String name = chm$editBuffer.trim();
-        CatnipServices.NETWORK.sendToServer(new SetNetworkNamePackage(name, active));
+        // 别名只写本管理器物品，不走 CMP 的全局网络改名（那个需要 owner 权限）
+        CatnipServices.NETWORK.sendToServer(
+                new de.hivemind.create_hivemind.network.RenameChannelPacket(active, name));
         chm$editBuffer = "";
     }
 

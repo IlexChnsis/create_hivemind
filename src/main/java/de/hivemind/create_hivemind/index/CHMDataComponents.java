@@ -3,6 +3,7 @@ package de.hivemind.create_hivemind.index;
 import de.hivemind.create_hivemind.CreateHiveMind;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.component.DataComponentType;
+import net.createmod.catnip.codecs.stream.CatnipStreamCodecBuilders;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.neoforged.bus.api.IEventBus;
@@ -17,18 +18,24 @@ import java.util.function.UnaryOperator;
 /**
  * 本模组附加在 CMP 便携式仓库管理器上的数据组件。
  *
- * <p>不修改 CMP 自己的组件，只往同一个 ItemStack 上追加两个：</p>
+ * <p>三个组件，全部挂在<b>物品</b>上，因此是「管理器 specific」的：</p>
  * <ul>
  *   <li>{@link #BOUND_NETWORKS} —— 已绑定的物流网络，顺序即绑定顺序；</li>
- *   <li>{@link #NETWORK_SERIALS} —— 网络 UUID → <b>固定的显示序号</b>。
- *       序号在绑定时分配，之后永不改变；解绑才释放。默认名「物流网络N」就是它。</li>
+ *   <li>{@link #NETWORK_SERIALS} —— 网络 UUID → <b>固定显示序号</b>。
+ *       绑定时分配，之后永不改变；解绑才释放。默认名「物流网络N」就是它；</li>
+ *   <li>{@link #NETWORK_NAMES} —— 网络 UUID → <b>本地别名</b>。玩家自己起的名字，
+ *       只对这一个管理器生效。</li>
  * </ul>
+ *
+ * <p><b>关于别名的语义（重要）：</b>这不是 CMP 的 {@code LogisticsNetwork.name}。
+ * 那个是网络的全局名，写在网络数据上、全服共享、且只有 owner 能改。
+ * 这里的别名随物品走，任何玩家拿到这个管理器都看到同一组别名，
+ * 但不同管理器之间互不影响——这正是「每个玩家用自己的别名」的实现方式。</p>
+ *
+ * <p>别名会覆盖显示，但<b>不影响</b>物流行为：寻址、下单、权限校验全部仍按网络 UUID 走。</p>
  *
  * <p>「当前活动网络」仍然复用 CMP 自己的 {@code CMP_FREQ}，所以上游所有
  * 请求库存、下单、校验权限的逻辑一行都不用改。</p>
- *
- * <p>网络<b>名字</b>不在这里存：直接用 CMP 自己的网络名（{@code NetworkSettingsScreen} 改的那个）。
- * 这里只存「没有名字时该显示几号」。</p>
  */
 public final class CHMDataComponents {
 
@@ -43,13 +50,10 @@ public final class CHMDataComponents {
             builder -> builder
                     .persistent(UUIDUtil.STRING_CODEC.listOf())
                     // 必须 networkSynchronized：客户端要靠它渲染频道列表
-                    .networkSynchronized(
-                            net.createmod.catnip.codecs.stream.CatnipStreamCodecBuilders.list(UUIDUtil.STREAM_CODEC))
+                    .networkSynchronized(CatnipStreamCodecBuilders.list(UUIDUtil.STREAM_CODEC))
     );
 
-    /**
-     * 网络 UUID → 固定显示序号。同样需要同步到客户端，因为标题和下拉列表在客户端渲染。
-     */
+    /** 网络 UUID → 固定显示序号。同样需要同步，因为标题与下拉在客户端渲染。 */
     public static final DataComponentType<Map<UUID, Integer>> NETWORK_SERIALS = register(
             "network_serials",
             builder -> builder
@@ -57,6 +61,16 @@ public final class CHMDataComponents {
                             com.mojang.serialization.Codec.INT))
                     .networkSynchronized(
                             ByteBufCodecs.map(HashMap::new, UUIDUtil.STREAM_CODEC, ByteBufCodecs.INT))
+    );
+
+    /** 网络 UUID → 本地别名。没有条目表示使用序号默认名。 */
+    public static final DataComponentType<Map<UUID, String>> NETWORK_NAMES = register(
+            "network_names",
+            builder -> builder
+                    .persistent(com.mojang.serialization.Codec.unboundedMap(UUIDUtil.STRING_CODEC,
+                            com.mojang.serialization.Codec.STRING))
+                    .networkSynchronized(
+                            ByteBufCodecs.map(HashMap::new, UUIDUtil.STREAM_CODEC, ByteBufCodecs.STRING_UTF8))
     );
 
     private static <T> DataComponentType<T> register(String name,
