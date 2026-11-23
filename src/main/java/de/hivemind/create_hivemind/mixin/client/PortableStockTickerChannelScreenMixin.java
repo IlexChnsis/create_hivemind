@@ -66,6 +66,17 @@ public abstract class PortableStockTickerChannelScreenMixin {
     @Unique
     private static final int CHM_ARROW_WIDTH = 14;
 
+    /**
+     * 右侧区域的右边界：内缩 4px。
+     *
+     * <p>{@code getXSize()} 是逻辑宽度 226，而背景纹理实际约 220 宽，
+     * 贴着逻辑右边界绘制会探出纹理 1–2px。这里统一内缩，绘制与命中判定共用同一计算。</p>
+     */
+    @Unique
+    private int chm$arrowRight(int guiLeft, int windowWidth) {
+        return guiLeft + windowWidth - 4;
+    }
+
     @Unique
     private boolean chm$dropdownOpen;
 
@@ -104,12 +115,15 @@ public abstract class PortableStockTickerChannelScreenMixin {
         return data != null && data.owner != null && data.owner.equals(player.getUUID());
     }
 
-    /** 网络显示名：优先用 CMP 的网络名，没有则按固定序号回退「物流网络N」。 */
+    /** 网络显示名：已命名则用 CMP 的名字，未命名则按固定序号回退「物流网络N」。 */
     @Unique
     private String chm$rawName(ItemStack stack, UUID network) {
         var data = ClientNetworkDataStorage.getNetworkData(network);
-        if (data != null && data.name != null && !data.name.isBlank()) {
-            return data.name;
+        // 注意：不能用「名字非空」判断是否已命名。CMP 对未命名网络返回硬编码的
+        // "Unnamed Network"，永远非空，会把序号回退逻辑整个挡住。
+        String name = data == null ? null : data.name;
+        if (!ChannelRegistry.isDefaultName(name)) {
+            return name;
         }
         // 与服务端 ChannelRegistry.fallbackName 用同一套序号，
         // 不能用列表索引：已命名的网络也占着序号（绑定 1、2 → 命名 2 → 新增得 3）
@@ -207,15 +221,18 @@ public abstract class PortableStockTickerChannelScreenMixin {
                     x + windowWidth / 2 - font.width(shown) / 2, y + 4, 0x714A40, false);
         }
 
-        // 下拉箭头：贴最右侧
+        // 下拉箭头：贴右侧，但留余量
+        // getXSize() 返回逻辑宽度 226，背景纹理实际只有约 220 宽，
+        // 贴着 226 画会探出纹理边缘 1–2px，所以右边界内缩。
         if (chm$bound.size() >= 2) {
             String arrow = chm$dropdownOpen ? "\u25B2" : "\u25BC";
-            int arrowX = x + windowWidth - CHM_ARROW_WIDTH + 2;
-            boolean hovered = mouseX >= x + windowWidth - CHM_ARROW_WIDTH && mouseX <= x + windowWidth
+            int arrowRight = chm$arrowRight(x, windowWidth);
+            int arrowLeft = arrowRight - CHM_ARROW_WIDTH;
+            int arrowX = arrowLeft + 3;
+            boolean hovered = mouseX >= arrowLeft && mouseX <= arrowRight
                     && mouseY >= y + 2 && mouseY <= y + 14;
             if (hovered) {
-                graphics.fill(x + windowWidth - CHM_ARROW_WIDTH, y + 2,
-                        x + windowWidth - 1, y + 14, 0x40C8A050);
+                graphics.fill(arrowLeft, y + 2, arrowRight, y + 14, 0x40C8A050);
             }
             graphics.drawString(font, arrow, arrowX, y + 5, 0x8C5D4B, false);
         }
@@ -280,9 +297,11 @@ public abstract class PortableStockTickerChannelScreenMixin {
             return;
         }
 
-        // 最右侧箭头：展开/收起下拉
+        // 右侧箭头：展开/收起下拉（与绘制共用 chm$arrowRight，保证两者位置一致）
+        int arrowRight = chm$arrowRight(x, windowWidth);
+        int arrowLeft = arrowRight - CHM_ARROW_WIDTH;
         if (inTitleRow && chm$bound.size() >= 2
-                && mouseX >= x + windowWidth - CHM_ARROW_WIDTH && mouseX <= x + windowWidth) {
+                && mouseX >= arrowLeft && mouseX <= arrowRight) {
             chm$dropdownOpen = !chm$dropdownOpen;
             cir.setReturnValue(true);
             return;
@@ -290,13 +309,14 @@ public abstract class PortableStockTickerChannelScreenMixin {
 
         // 标题文字：进入改名（仅 owner）
         if (inTitleRow && active != null
-                && mouseX >= x + 4 && mouseX < x + windowWidth - CHM_ARROW_WIDTH) {
+                && mouseX >= x + 4 && mouseX < arrowLeft) {
             if (chm$canRename(active)) {
                 chm$dropdownOpen = false;
                 chm$editing = true;
-                // 初始值：已有自定义名则带出来，默认名则留空方便直接输入
+                // 初始值：真命名过就带出来；CMP 的占位默认名留空，方便直接输入
                 var data = ClientNetworkDataStorage.getNetworkData(active);
-                chm$editBuffer = data != null && data.name != null ? data.name : "";
+                String existing = data == null ? null : data.name;
+                chm$editBuffer = ChannelRegistry.isDefaultName(existing) ? "" : existing;
                 cir.setReturnValue(true);
             }
             return;

@@ -174,6 +174,23 @@ public final class ChannelRegistry {
     }
 
     /**
+     * CMP 给「从未命名」的网络返回的默认名。
+     *
+     * <p>它硬编码在 CMP 的 {@code LogisticsNetworkMixin#create_mobile_packages$getName} 里，
+     * 不是 lang 键，所以无法靠翻译覆盖。网络没改过名时 {@code getName()} 永远返回它，
+     * 因此判断「是否已命名」不能看返回值是否为空，必须与这个字面量比较。</p>
+     *
+     * <p>已知取舍：玩家若手动把网络命名为这个字符串，会被当成未命名而显示「物流网络N」。
+     * 概率极低，且改名界面里这个名字毫无吸引力，接受这个边界。</p>
+     */
+    public static final String CMP_DEFAULT_NETWORK_NAME = "Unnamed Network";
+
+    /** 该名字是否是 CMP 的占位默认名（即网络从未被命名）。 */
+    public static boolean isDefaultName(@Nullable String name) {
+        return name == null || name.isBlank() || CMP_DEFAULT_NETWORK_NAME.equalsIgnoreCase(name.trim());
+    }
+
+    /**
      * 服务端安全的名字回退：只按固定序号生成「物流网络N」。
      *
      * <p>真正的网络名由客户端从 CMP 的 {@code ClientNetworkDataStorage} 读取
